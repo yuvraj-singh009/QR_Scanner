@@ -2,12 +2,10 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import logging
-import time
-from PIL import Image
-import cv2
+import av
 import numpy as np
 from pyzbar.pyzbar import decode
-import io
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 
 # Set page config (MUST BE FIRST STREAMLIT COMMAND)
 st.set_page_config(
@@ -72,47 +70,24 @@ def mark_attendance(reg_number):
         logger.error(f"Error marking attendance: {str(e)}")
         return False, f"Error marking attendance: {str(e)}"
 
-def scan_qr_from_camera():
-    """Continuously scan QR codes from the camera feed."""
-    try:
-        # Try to access the camera
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            st.error("Unable to access the camera. Please ensure your camera is connected and accessible.")
-            return None
+class QRCodeProcessor(VideoProcessorBase):
+    """Custom video processor to detect QR codes in the video stream."""
+    def __init__(self):
+        self.qr_data = None
+
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        # Convert the frame to a numpy array
+        img = frame.to_ndarray(format="bgr24")
         
-        st_frame = st.empty()
+        # Decode QR codes
+        qr_codes = decode(img)
         
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                st.error("Failed to capture frame from the camera.")
-                break
-            
-            # Display the frame in Streamlit
-            st_frame.image(frame, channels="BGR", use_container_width=True)
-            
-            # Decode QR codes
-            qr_codes = decode(frame)
-            
-            if qr_codes:
-                qr_data = qr_codes[0].data.decode('utf-8')
-                st.success(f"QR Code detected: {qr_data}")
-                return qr_data
-            
-            # Break the loop on 'q' key press (for local testing)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+        if qr_codes:
+            self.qr_data = qr_codes[0].data.decode('utf-8')
+            st.success(f"QR Code detected: {self.qr_data}")
+            mark_attendance(self.qr_data)
         
-    except Exception as e:
-        st.error(f"An error occurred while accessing the camera: {str(e)}")
-        return None
-    
-    finally:
-        # Release the camera
-        if 'cap' in locals():
-            cap.release()
-        cv2.destroyAllWindows()
+        return frame
 
 def main():
     # Add Hindi Club logo
@@ -136,10 +111,17 @@ def main():
     Point your camera at the QR code to mark attendance.
     """)
     
-    if st.button("Start Scanning"):
-        qr_data = scan_qr_from_camera()
-        
-        if qr_data:
+    # WebRTC streamer for camera access
+    webrtc_ctx = webrtc_streamer(
+        key="qr-scanner",
+        mode=WebRtcMode.SENDRECV,
+        video_processor_factory=QRCodeProcessor,
+        async_processing=True,
+    )
+
+    if webrtc_ctx.video_processor:
+        if webrtc_ctx.video_processor.qr_data:
+            qr_data = webrtc_ctx.video_processor.qr_data
             success, message = mark_attendance(qr_data)
             if success:
                 st.success(message)
@@ -148,8 +130,6 @@ def main():
                 st.balloons()
             else:
                 st.error(message)
-        else:
-            st.error("No QR code detected.")
 
     # Show attendance statistics
     if st.checkbox("Show Attendance Statistics"):
