@@ -74,33 +74,45 @@ def mark_attendance(reg_number):
 
 def scan_qr_from_camera():
     """Continuously scan QR codes from the camera feed."""
-    cap = cv2.VideoCapture(0)
-    st_frame = st.empty()
+    try:
+        # Try to access the camera
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            st.error("Unable to access the camera. Please ensure your camera is connected and accessible.")
+            return None
+        
+        st_frame = st.empty()
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                st.error("Failed to capture frame from the camera.")
+                break
+            
+            # Display the frame in Streamlit
+            st_frame.image(frame, channels="BGR", use_container_width=True)
+            
+            # Decode QR codes
+            qr_codes = decode(frame)
+            
+            if qr_codes:
+                qr_data = qr_codes[0].data.decode('utf-8')
+                st.success(f"QR Code detected: {qr_data}")
+                return qr_data
+            
+            # Break the loop on 'q' key press (for local testing)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        
+    except Exception as e:
+        st.error(f"An error occurred while accessing the camera: {str(e)}")
+        return None
     
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        # Display the frame in Streamlit
-        st_frame.image(frame, channels="BGR", use_container_width=True)  # Updated parameter
-        
-        # Decode QR codes
-        qr_codes = decode(frame)
-        
-        if qr_codes:
-            qr_data = qr_codes[0].data.decode('utf-8')
+    finally:
+        # Release the camera
+        if 'cap' in locals():
             cap.release()
-            cv2.destroyAllWindows()
-            return qr_data
-        
-        # Break the loop on 'q' key press
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-    
-    cap.release()
-    cv2.destroyAllWindows()
-    return None
+        cv2.destroyAllWindows()
 
 def main():
     # Add Hindi Club logo
