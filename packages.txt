@@ -1,2 +1,6 @@
 libzbar0
 libgl1-mesa-glx
+libavcodec-dev
+libavformat-dev
+libavutil-dev
+libswscale-dev
