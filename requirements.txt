@@ -10,3 +10,10 @@ plotly
 setuptools
 wheel
 
+streamlit
+streamlit-webrtc
+av
+pyzbar
+opencv-python
+pandas
+numpy
